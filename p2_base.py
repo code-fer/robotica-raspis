@@ -5,6 +5,10 @@ import numpy as np
 import time
 from Robot import Robot
 
+def movBasico(robot):
+    robot.setSpeed(0.2, 0)
+    robot.setSpeed(0, 0)
+
 
 def main(args):
     try:
@@ -22,19 +26,7 @@ def main(args):
         robot.startOdometry()
 
         # 2. perform trajectory
-
-
-        # DUMMY CODE! delete when you have your own
-        robot.setSpeed(1,1)
-        print("Start : %s" % time.ctime())
-        time.sleep(3)
-        print("X value from main tmp %d" % robot.x.value)
-        time.sleep(3)
-        print("End : %s" % time.ctime())
-
-        robot.lock_odometry.acquire()
-        print("Odom values at main at the END: %.2f, %.2f, %.2f " % (robot.x.value, robot.y.value, robot.th.value))
-        robot.lock_odometry.release()
+        movBasico(robot)
 
         # PART 1:
         # robot.setSpeed()
