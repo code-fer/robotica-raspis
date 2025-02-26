@@ -6,10 +6,13 @@ from __future__ import division       #                           ''
 import brickpi3 # import the BrickPi3 drivers
 import time     # import the time library for the sleep function
 import sys
+import math
 import numpy as np
 
 # tambien se podria utilizar el paquete de threading
 from multiprocessing import Process, Value, Array, Lock
+
+
 
 class Robot:
     def __init__(self, init_position=[0.0, 0.0, 0.0]):
@@ -39,33 +42,32 @@ class Robot:
         #self.BP.set_sensor_type(self.BP.PORT_1, self.BP.SENSOR_TYPE.TOUCH)
 
         # reset encoder B and C (or all the motors you are using)
-        #self.BP.offset_motor_encoder(self.BP.PORT_B,
-        #    self.BP.get_motor_encoder(self.BP.PORT_B))
-        #self.BP.offset_motor_encoder(self.BP.PORT_C,
-        #    self.BP.get_motor_encoder(self.BP.PORT_C))
+        self.MOT_DCHA_PORT = self.BP.PORT_B
+        self.MOT_IZQ_PORT = self.BP.PORT_C
+        self.BP.offset_motor_encoder(self.MOT_DCHA_PORT,
+            self.BP.get_motor_encoder(self.MOT_DCHA_PORT))
+        self.BP.offset_motor_encoder(self.MOT_IZQ_PORT,
+            self.BP.get_motor_encoder(self.MOT_IZQ_PORT))
 
         ##################################################
         # odometry shared memory values
-        self.x = Value('d',0.0)
-        self.y = Value('d',0.0)
-        self.th = Value('d',0.0)
+        self.x = Value('d', init_position[0])
+        self.y = Value('d', init_position[1])
+        self.th = Value('d', init_position[2])
+        self.v = Value('d',0.0)
+        self.w = Value('d',0.0)
         self.finished = Value('b',1) # boolean to show if odometry updates are finished
 
         # if we want to block several instructions to be run together, we may want to use an explicit Lock
         self.lock_odometry = Lock()
-        #self.lock_odometry.acquire()
-        #print('hello world', i)
-        #self.lock_odometry.release()
 
         # odometry update period --> UPDATE value!
         self.P = 1.0
 
         """"FLAGS GLOBALES (CONFIGURACION HARDWARE)"""
-        MOT_DCHA_PORT = self.BP.PORT1
-        MOT_IZQ_PORT = self.BP.PORT2
-        GYRO_PORT = ...
-        RADIO_RUEDAS = 10 #mm
-        SEP_RUEDAS = 50 #mm
+        #GYRO_PORT = ...
+        self.RADIO_RUEDAS = 27.5 #mm
+        self.SEP_RUEDAS = 103.0 #mm
 
     def setSpeed(self, v,w):
         """ To be filled - These is all dummy sample code """
@@ -76,30 +78,40 @@ class Robot:
         #speedPower = 100
         #BP.set_motor_power(BP.PORT_B + BP.PORT_C, speedPower)
 
-        speedDPS_left = 180
-        speedDPS_right = 180
-        #self.BP.set_motor_dps(self.BP.PORT_B, speedDPS_left)
-        #self.BP.set_motor_dps(self.BP.PORT_C, speedDPS_right)
+        matr_trans=np.array([1/self.RADIO_RUEDAS,self.SEP_RUEDAS/(2*self.RADIO_RUEDAS)],[1/self.RADIO_RUEDAS,-self.SEP_RUEDAS/(2*self.RADIO_RUEDAS)])
+        vc=np.array([v,w])
+        wr=matr_trans@vc #vel_ruedas=[w_mot_izq, w_mot_dcho]
 
+        speedDPS_left = math.degrees(wr[1])
+        speedDPS_right = math.degrees(wr[0])
 
-        radio_giro=v/w
-        matr_trans=np.array([1/radio_giro,SEP_RUEDAS/(2*radio_giro)],[1/radio_giro,-SEP_RUEDAS/(2*radio_giro)])
-        vel_entrada=np.array([v],[w])
-        val_ruedas=matr_trans@vel_entrada #vel_ruedas=[w_mot_izq, w_mot_dcho]
         #aplicar velocudad a los motores
-        self.BP.set_motor_dps(self.MOT_IZQ_PORT, np.degrees(vel_ruedas[0]))
-        self.BP.set_motor_dps(self.MOT_DCHO_PORT, np.degrees(vel_ruedas[1]))
-        print(vel_ruedas[0])
+        self.BP.set_motor_dps(self.MOT_IZQ_PORT, speedDPS_left)
+        self.BP.set_motor_dps(self.MOT_DCHA_PORT, speedDPS_right)
+        print(wr[0])
+
+        self.lock_odometry.acquire()
+        v = self.v.value
+        w = self.w.value
+        self.lock_odometry.release()
 
 
     def readSpeed(self):
-        """ To be filled"""
+        self.lock_odometry.acquire()
+        v = self.v.value
+        w = self.w.value
+        self.lock_odometry.release()
 
-        return 0,0
+        return v,w
 
     def readOdometry(self):
         """ Returns current value of odometry estimation """
-        return self.x.value, self.y.value, self.th.value
+        self.lock_odometry.acquire()
+        x = self.x.value
+        y = self.y.value
+        th = self.th.value
+        self.lock_odometry.release()
+        return x, y, th
 
     def startOdometry(self):
         """ This starts a new process/thread that will be updating the odometry periodically """
@@ -112,11 +124,35 @@ class Robot:
     def updateOdometry(self): #, additional_params?):
         """ To be filled ...  """
 
+        motor_izq_ant = self.BP.get_motor_encoder(self.MOT_IZQ_PORT)
+        motor_dcha_ant = self.BP.get_motor_encoder(self.MOT_DCHA_PORT)
+
+
         while not self.finished.value:
             # current processor time in a floating point value, in seconds
             tIni = time.clock()
 
             # compute updates
+
+            motor_izq_act = self.BP.get_motor_encoder(self.MOT_IZQ_PORT)
+            motor_dcha_act = self.BP.get_motor_encoder(self.MOT_DCHA_PORT)
+
+            speedDPS_left = (motor_izq_act - motor_izq_ant) /self.P
+            speedDPS_right = (motor_dcha_act - motor_dcha_ant) /self.P
+
+            motor_izq_ant = motor_izq_act
+            motor_izq_ant = motor_izq_act
+
+            wi = np.radians(speedDPS_left)
+            wd = np.radians(speedDPS_right)
+
+            wr = np.array([wd,wi])
+
+            matr_trans=np.array([self.RADIO_RUEDAS/2, self.RADIO_RUEDAS/2], [self.RADIO_RUEDAS/self.SEP_RUEDAS, -self.RADIO_RUEDAS/self.SEP_RUEDAS])
+            vc = matr_trans@wr #vc=[vel_lin, vel_ang]
+
+            v = vc[0]
+            w = vc[1]
 
             ######## UPDATE FROM HERE with your code (following the suggested scheme) ########
             sys.stdout.write("Dummy update of odometry ...., X=  %d, \
@@ -132,9 +168,15 @@ class Robot:
 
             # to "lock" a whole set of operations, we can use a "mutex"
             self.lock_odometry.acquire()
-            #self.x.value+=1
-            self.y.value+=1
-            self.th.value+=1
+            if w == 0:
+                self.x.value += v*self.P * math.cos(self.th.value)
+                self.y.value += v*self.P * math.sin(self.th.value)
+            else:
+                self.x.value += (v/w) * (math.sin(self.th.value + w*self.P) - math.sin(self.th.value))
+                self.y.value += (v/w) * (-math.cos(self.th.value + w*self.P) + math.cos(self.th.value))
+            x = self.x.value
+            y = self.y.value
+            th = self.th.value
             self.lock_odometry.release()
 
             try:
