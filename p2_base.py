@@ -7,17 +7,10 @@ import math
 from Robot import Robot
 
 def movBasico(robot):
-    robot.setSpeed(0.2, 0)
+    robot.setSpeed(2, math.pi/8)
+    robot.checkPosition(20,0,0)
     robot.setSpeed(0, 0)
-    time.sleep(0.1)
 
-    robot.setSpeed(0, -math.pi/4)
-    robot.setSpeed(0, 0)
-    time.sleep(0.1)
-
-    robot.setSpeed(0, math.pi/4)
-    robot.setSpeed(0, 0)
-    time.sleep(0.1)
 
 
 def main(args):

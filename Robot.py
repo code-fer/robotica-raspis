@@ -42,8 +42,8 @@ class Robot:
         #self.BP.set_sensor_type(self.BP.PORT_1, self.BP.SENSOR_TYPE.TOUCH)
 
         # reset encoder B and C (or all the motors you are using)
-        self.MOT_DCHA_PORT = self.BP.PORT_B
-        self.MOT_IZQ_PORT = self.BP.PORT_C
+        self.MOT_DCHA_PORT = self.BP.PORT_D
+        self.MOT_IZQ_PORT = self.BP.PORT_B
         self.BP.offset_motor_encoder(self.MOT_DCHA_PORT,
             self.BP.get_motor_encoder(self.MOT_DCHA_PORT))
         self.BP.offset_motor_encoder(self.MOT_IZQ_PORT,
@@ -66,8 +66,10 @@ class Robot:
 
         """"FLAGS GLOBALES (CONFIGURACION HARDWARE)"""
         #GYRO_PORT = ...
-        self.RADIO_RUEDAS = 27.5 #mm
-        self.SEP_RUEDAS = 103.0 #mm
+        self.RADIO_RUEDAS = 0.275 #mm
+        self.SEP_RUEDAS = 1.030 #mm
+
+        self.MARGEN_ERROR_ODO = 1 #mm?
 
     def setSpeed(self, v,w):
         """ To be filled - These is all dummy sample code """
@@ -78,7 +80,7 @@ class Robot:
         #speedPower = 100
         #BP.set_motor_power(BP.PORT_B + BP.PORT_C, speedPower)
 
-        matr_trans=np.array([1/self.RADIO_RUEDAS,self.SEP_RUEDAS/(2*self.RADIO_RUEDAS)],[1/self.RADIO_RUEDAS,-self.SEP_RUEDAS/(2*self.RADIO_RUEDAS)])
+        matr_trans=np.array([[1/self.RADIO_RUEDAS,self.SEP_RUEDAS/(2*self.RADIO_RUEDAS)],[1/self.RADIO_RUEDAS,-self.SEP_RUEDAS/(2*self.RADIO_RUEDAS)]])
         vc=np.array([v,w])
         wr=matr_trans@vc #vel_ruedas=[w_mot_izq, w_mot_dcho]
 
@@ -148,23 +150,14 @@ class Robot:
 
             wr = np.array([wd,wi])
 
-            matr_trans=np.array([self.RADIO_RUEDAS/2, self.RADIO_RUEDAS/2], [self.RADIO_RUEDAS/self.SEP_RUEDAS, -self.RADIO_RUEDAS/self.SEP_RUEDAS])
+            matr_trans=np.array([[self.RADIO_RUEDAS/2, self.RADIO_RUEDAS/2], [self.RADIO_RUEDAS/self.SEP_RUEDAS, -self.RADIO_RUEDAS/self.SEP_RUEDAS]])
             vc = matr_trans@wr #vc=[vel_lin, vel_ang]
 
             v = vc[0]
             w = vc[1]
 
-            ######## UPDATE FROM HERE with your code (following the suggested scheme) ########
-            sys.stdout.write("Dummy update of odometry ...., X=  %d, \
-                Y=  %d, th=  %d \n" %(self.x.value, self.y.value, self.th.value) )
-            #print("Dummy update of odometry ...., X=  %.2f" %(self.x.value) )
-
             # update odometry uses values that require mutex
             # (they are declared as value, so lock is implicitly done for atomic operations, BUT =+ is NOT atomic)
-
-            # Operations like += which involve a read and write are not atomic.
-            with self.x.get_lock():
-                self.x.value+=1
 
             # to "lock" a whole set of operations, we can use a "mutex"
             self.lock_odometry.acquire()
@@ -178,7 +171,7 @@ class Robot:
             y = self.y.value
             th = self.th.value
             self.lock_odometry.release()
-
+            
             try:
                 # Each of the following BP.get_motor_encoder functions returns the encoder value
                 # (what we want to store).
@@ -211,6 +204,25 @@ class Robot:
     def stopOdometry(self):
         self.finished.value = True
         #self.BP.reset_all()
+    
+    
+    #Check position es bloqueante hasta que devuelve TRUE, cuando el robot 
+    #alcanza la situacion x_fin, y_fin, th_fin con un margen de error de 
+    def checkPosition(self, x_fin, y_fin, th_fin):
+        next_update = time.time()
 
-robot = Robot()
-robot.setSpeed(3,4)
+        end = False
+        while(not end):
+            next_update+=self.P 
+            current_time = time.time()
+
+            if(next_update>current_time):
+                time.sleep(next_update-time.time())
+
+            x_act, y_act, th_act = self.readOdometry()
+            print("x_a:",x_act,", y_act:",y_act,", th_act:",th_act)
+            print("Error en x : [",np.absolute(x_fin-x_act),"]" )
+
+
+            end = (np.absolute(x_fin-x_act)<self.MARGEN_ERROR_ODO) 
+        return end
